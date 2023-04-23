@@ -16,7 +16,7 @@ pygmentscodefencesguesssyntax = true
 
 paginate=5
 
-googleAnalytics = 'G-MEASUREMENT_ID'
+googleAnalytics = 'G-6MR97DTEQB'
 enableRobotsTXT = true
 
 [params]
@@ -25,10 +25,9 @@ enableRobotsTXT = true
   copyright = "@ Vladimir Kuznichenkov"
   WebMentionDomain = "kuzaxak.dev"
   mathjax = true # enable MathJax support
-	katex = true # enable KaTeX support
+  katex = true # enable KaTeX support
 
 # Social Tags
-
 [[params.social]]
   name = "GitHub"
   icon = "github"
