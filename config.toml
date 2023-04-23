@@ -1,0 +1,88 @@
+relativeURLs = true
+baseURL = "/"
+languageCode = "en-us"
+title = "Vladimir Kuznichenkov | Engineer"
+author = "Vladimir Kuznichenkov"
+theme = "archie"
+copyright = "© Vladimir Kuznichenkov"
+
+# get information about the Git repo, such as last commit to a file
+enableGitInfo = true
+
+# Code Highlight
+pygmentsstyle = "monokai"
+pygmentscodefences = true
+pygmentscodefencesguesssyntax = true
+
+paginate=5
+
+googleAnalytics = 'G-MEASUREMENT_ID'
+enableRobotsTXT = true
+
+[params]
+  mode = "toggle"
+  author = "Vladimir Kuznichenkov"
+  copyright = "@ Vladimir Kuznichenkov"
+  WebMentionDomain = "kuzaxak.dev"
+  mathjax = true # enable MathJax support
+	katex = true # enable KaTeX support
+
+# Social Tags
+
+[[params.social]]
+  name = "GitHub"
+  icon = "github"
+  url = "https://github.com/kuzaxak/blog"
+
+[[params.social]]
+  name = "Twitter"
+  icon = "twitter"
+  url = "https://twitter.com/kuzaxak/"
+
+[permalinks]
+  posts = "/posts/:year/:month/:day/:slug/"
+  tags = "/tags/:title/"
+
+
+[outputFormats]
+
+[outputFormats.rss]
+  mediatype = "application/rss"
+  baseName = "feed"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.extensions]
+    typographer = false
+    [markup.goldmark.renderer]
+    # allow inline HTML, such as spoiler warnings
+    unsafe = true
+  [markup.tableOfContents]
+  startLevel = 1
+  endLevel = 6
+  ordered = false
+
+
+[menu]
+  [[menu.main]]
+    identifier = "blog"
+    name = "./blog"
+    url = "/posts"
+    weight = 2
+  [[menu.main]]
+    identifier = "about"
+    name = "./about"
+    url = "/about"
+    weight = 3
+
+
+  [[menu.footer]]
+    name = "Tags"
+    url = "/tags"
+    weight = 4
+
+
+[sitemap]
+  changefreq = 'monthly'
+  filename = 'sitemap.xml'
+  priority = 0.5
