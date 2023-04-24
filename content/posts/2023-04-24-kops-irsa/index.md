@@ -7,7 +7,12 @@ description: |
 tags: []
 date: 2023-04-24
 slug: "kops-irsa"
+thumbnail: ./art-cover.png
+resources:
+- src: ./art-cover.png
 ---
+
+![image](./art-cover.png)
 
 When I first started looking into adding IRSA (IAM Roles for ServiceAccounts) support to my
 Kops managed Kubernetes clusters, I found [the documentation][1] to be extremely confusing. 
@@ -67,7 +72,7 @@ using the asymmetrical JWT key pair.
 
 
 Keep in mind that enabling `serviceAccountIssuerDiscovery` in runtime will cause all SA to regenerate
-[their certificates][1].
+[their secrets][1].
 
 > Warning: Enabling the following configuration on an existing cluster can be disruptive due to the 
 > control plane provisioning tokens with different issuers. The symptom is that Pods are unable to 

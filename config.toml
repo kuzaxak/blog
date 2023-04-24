@@ -38,6 +38,9 @@ enableRobotsTXT = true
   icon = "twitter"
   url = "https://twitter.com/kuzaxak/"
 
+[social]
+  twitter = 'kuzaxak'
+
 [permalinks]
   posts = "/posts/:year/:month/:day/:slug/"
   tags = "/tags/:title/"
