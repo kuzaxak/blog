@@ -4,6 +4,10 @@
     <a class="soc" href="{{ $key.url }}" rel="me" title="{{ $key.name }}"><i data-feather="{{ $key.icon }}"></i></a>
     <a class="border"></a>
     {{- end -}}
+    {{ with .OutputFormats.Get "rss" -}}
+    {{ printf `<a class="soc" rel="me" type="%s" href="%s" title="RSS"><i data-feather="rss"></i></a>` .MediaType.Type .Permalink | safeHTML }}
+    <a class="border"></a>
+    {{ end -}}
   </div>
   <div class="footer-info">
     {{ dateFormat "2006" now }} {{ with .Site.Copyright }} {{ . }} {{ end }}

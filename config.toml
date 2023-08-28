@@ -50,7 +50,6 @@ enableRobotsTXT = true
 
 [outputFormats.rss]
   mediatype = "application/rss"
-  baseName = "feed"
 
 [markup]
   [markup.goldmark]
