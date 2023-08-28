@@ -1,3 +1,3 @@
 <p>
-  <img src="{{ printf "%s%s" .Page.Permalink .Destination | absURL | safeURL }}" alt="{{ .Text }}" {{ with .Title }} title="{{ . }}"{{ end }} dd={{ .Text }} />
+  <img src="{{ printf "%s%s" .Page.RelPermalink .Destination | absURL | safeURL }}" alt="{{ .Text }}" {{ with .Title }} title="{{ . }}"{{ end }} />
 </p>

@@ -1,5 +1,4 @@
-relativeURLs = true
-baseURL = "/"
+baseURL = "https://kuzaxak.dev/"
 languageCode = "en-us"
 title = "Vladimir Kuznichenkov | Engineer"
 author = "Vladimir Kuznichenkov"
