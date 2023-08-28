@@ -26,6 +26,7 @@ enableRobotsTXT = true
   WebMentionDomain = "kuzaxak.dev"
   mathjax = true # enable MathJax support
   katex = true # enable KaTeX support
+  ShowFullTextinRSS = true
 
 # Social Tags
 [[params.social]]
