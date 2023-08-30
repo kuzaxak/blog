@@ -7,3 +7,7 @@ static_sites:
     deploy_on_push: true
     repo: kuzaxak/blog
   name: static-hugo
+  envs:
+  - key: HUGO_EXTENDED
+    scope: BUILD_TIME
+    value: "1"
