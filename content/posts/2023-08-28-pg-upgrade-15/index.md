@@ -12,7 +12,12 @@ slug: "pg-upgrade-15"
 tldr: |
     To fix broken pglogical you need to recreate origin with the same name as replication slot.
     `SELECT * FROM pg_stat_replication_slots; SELECT pg_replication_origin_create('pgl_market_data_prod_0c0d721_sit_m6d604ee');`
+thumbnail: ./art-cover.png
+resources:
+- src: ./art-cover.png
 ---
+
+![image](./art-cover.png)
 
 We recently undertook the task of upgrading PostgreSQL (PG) from version 14 to 15. 
 For this, we used Patroni to control the PG deployment in Kubernetes (k8s).
