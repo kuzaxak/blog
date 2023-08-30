@@ -11,9 +11,7 @@
 */}}
 <figure class="image-caption">
     <img alt="{{ $.Text }}"
-        sizes="50vw"
         width="{{ $img.Width }}"
-        height="{{ $img.Height }}"
         src="{{ $img.Permalink }}" />
     <figcaption>{{ with $.Title | safeHTML }}{{ . }}{{ end }}</figcaption>
 </figure>
