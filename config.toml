@@ -13,7 +13,7 @@ pygmentsstyle = "monokai"
 pygmentscodefences = true
 pygmentscodefencesguesssyntax = true
 
-paginate=5
+paginate=10
 
 googleAnalytics = 'G-6MR97DTEQB'
 enableRobotsTXT = true
@@ -21,10 +21,13 @@ enableRobotsTXT = true
 [params]
   mode = "toggle"
   author = "Vladimir Kuznichenkov"
+  description = """Hi, my name is Vladimir Kuznichenkov. I am a Senior Infrastructure Engineer.
+    This blog is my attempt to synthesize and share what I’ve learned along the way.
+    Mainly, I'll share blog posts related to Infrastructure, Firmware, and Hardware."""
   copyright = "@ Vladimir Kuznichenkov"
   WebMentionDomain = "kuzaxak.dev"
-  mathjax = true # enable MathJax support
-  katex = true # enable KaTeX support
+  mathjax = false # enable MathJax support
+  katex = false # enable KaTeX support
   ShowFullTextinRSS = true
 
 # Social Tags
