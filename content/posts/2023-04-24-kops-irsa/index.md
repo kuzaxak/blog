@@ -7,12 +7,12 @@ description: |
 tags: []
 date: 2023-04-24
 slug: "kops-irsa"
-thumbnail: ./art-cover.png
+thumbnail: ./art-cover.webp
 resources:
-- src: ./art-cover.png
+- src: ./art-cover.webp
 ---
 
-![image](./art-cover.png)
+![image](./art-cover.webp)
 
 When I first started looking into adding IRSA (IAM Roles for ServiceAccounts) support to my
 Kops managed Kubernetes clusters, I found [the documentation][1] to be extremely confusing. 
