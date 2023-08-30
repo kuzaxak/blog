@@ -29,6 +29,7 @@ enableRobotsTXT = true
   mathjax = false # enable MathJax support
   katex = false # enable KaTeX support
   ShowFullTextinRSS = true
+  useCDN = true
 
 # Social Tags
 [[params.social]]
