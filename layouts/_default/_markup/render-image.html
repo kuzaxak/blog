@@ -2,21 +2,19 @@
 {{- if and (not $img) .Page.File -}}
 {{ $path := path.Join .Page.File.Dir .Destination }}
 {{- $img = resources.Get $path -}}
-{{ printf "%#v" $path }}
 {{- end -}}
 {{- with $img -}}
-{{- $large := $img.Resize "1200x" -}}
-{{ $medium := $large.Fill "726x402" -}}
-{{ $small := $medium.Fill "458x254" -}}
+{{/* TODO restore after fix https://github.com/golang/go/issues/60437
+    {{- $large := $img.Resize "1200x" -}}
+    {{ $medium := $large.Fill "726x402" -}}
+    {{ $small := $medium.Fill "458x254" -}}
+*/}}
 <figure class="image-caption">
-    <img alt="{{ $.Text }}" srcset="
-        {{ $small.RelPermalink }} 458w,
-        {{ $medium.RelPermalink }} 726w,
-        {{ $large.RelPermalink }} 1200w"
+    <img alt="{{ $.Text }}"
         sizes="50vw"
         width="{{ $img.Width }}"
         height="{{ $img.Height }}"
-        src="{{ $small.RelPermalink }}" />
+        src="{{ $img.Permalink }}" />
     <figcaption>{{ with $.Title | safeHTML }}{{ . }}{{ end }}</figcaption>
 </figure>
 {{- else -}}
