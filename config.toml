@@ -30,6 +30,7 @@ enableRobotsTXT = true
   katex = false # enable KaTeX support
   ShowFullTextinRSS = true
   useCDN = true
+  favicon = "/favicon.ico"
 
 # Social Tags
 [[params.social]]
