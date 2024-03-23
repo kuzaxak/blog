@@ -18,23 +18,26 @@ PgLogical is a powerful logical replication system for PostgreSQL that allows yo
 On the provider side, you can check the delay in data and the current linked WAL file by running the following query:
 
 ```sql
-SELECT slot_name,
+SELECT slot_name, database,
        lpad((pg_control_checkpoint()).timeline_id::text, 8, '0') ||
        lpad(split_part(restart_lsn::text, '/', 1), 8, '0') ||
        lpad(substr(split_part(restart_lsn::text, '/', 2), 1, 2), 8, '0') AS wal_file,
-       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS replication_delay
-FROM pg_replication_slots;
+	   pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) AS replication_delay
+FROM pg_replication_slots WHERE plugin like '%pglogical%';
 ```
 
 In my case, I had a delay of 170GB for one particular database where I had PgLogical enabled. To clarify the status of the replication slot, you can run:
 
 ```sql
 select   pid, client_addr, application_name, state, sync_state,
-         pg_wal_lsn_diff(sent_lsn, write_lsn) as write_lag,
-         pg_wal_lsn_diff(sent_lsn, flush_lsn) as flush_lag,
-         pg_wal_lsn_diff(sent_lsn, replay_lsn) as replay_lag
+         pg_wal_lsn_diff(pg_current_wal_lsn(),sent_lsn) AS sent_lag,
+         pg_wal_lsn_diff(sent_lsn,flush_lsn) AS receiving_lag,
+         pg_wal_lsn_diff(flush_lsn,replay_lsn) AS replay_lag,
+         pg_wal_lsn_diff(pg_current_wal_lsn(),replay_lsn) AS total_lag,
+         now()-reply_time AS reply_delay
 from pg_stat_replication;
 ```
+Pay attention to the `reply_delay` column, which indicates the time when the provider last received an update from the subscriber database.
 
 If you see `catchup` in some slots, it means that your receiver is lagging behind, and you need to switch to it to investigate the reason.
 
@@ -48,13 +51,13 @@ SELECT subscription_name, status FROM pglogical.show_subscription_status();
 
 If you see `down` status, you can check logs and grep for `pglogical apply` and then `ERROR`. You may have some conflicts in schema.
 
-Message in logs may look like:
+Log messages may look like:
 
 ```
 [2641263]: [5-1] 65705192.284d6f 1848030187 databse_name [unknown] pglogical apply 16794:4247138421 ERROR: null value in column "ccy" of relation "report" violates not-null constraint
 ```
 
-In my case, I had a replication status of `replicating`. To check what exactly was wrong, I ran the following query to get data per table for the synced database:
+If the replication status is `replicating`, you can investigate further by running the following query to get data per table for the synced database:
 
 ```sql
 SELECT 
@@ -84,9 +87,20 @@ FROM
     pglogical.local_sync_status;
 ```
 
-Suspiciously, I got `Done` and `Synchronization finished` for some tables, but I clearly saw that the data was not there. I found an [issue][1] describing my case and decided to restart the replication. But before doing that save results of the query from this tabel. You will loose them after restarting replication.
+If you see `Done` or `Synchronization finished` for some tables but the data is missing, you may need to re-sync tables or restart the replication, you may read more in the [issue][1]. Before doing so, save the results from the `local_sync_status` table, as they will be lost after restarting the replication.
 
-To do this, you can use the following helper to build a command with the same parameters as you had before. If your database is big enough (>100GB), you can turn off init sync for the data.
+You can attempt to resync specific tables before recreating the entire replication:
+
+```sql
+SELECT pglogical.alter_subscription_resynchronize_table(
+  subscription_name := 'subscription_name',
+  relation := 'public.table_name'
+);
+```
+
+**NB!:** Remember it will truncate table first. Do it outside of normal operations hours!
+
+If nothing helps, you can restart the replication using the following helper query to build a command with the same parameters as before. If your database is big enough (>100GB), you can turn off init sync for the data.
 
 ```sql
 SELECT 'SELECT pglogical.drop_subscription(''' || sub_name || ''');' 
@@ -105,9 +119,7 @@ FROM (
 
 This query will template a query to restart the subscription in a database by recreating it. It will reduce the lag but will repoint the slot to the latest state, so the data lag won't be synced.
 
-Together with that records from `local_sync_status` got lost, 
-
-To overcome that, you can run a query to request a full resync (truncate, copy, sync) per table. I use data from the `local_sync_status` table.
+After restarting the subscription, the records from `local_sync_status` will be lost. To overcome this, you can request a full resync (truncate, copy, sync) per table using the data from the `local_sync_status` table:
 
 ```sql
 SELECT pglogical.alter_subscription_resynchronize_table(
@@ -116,7 +128,7 @@ SELECT pglogical.alter_subscription_resynchronize_table(
 );
 ```
 
-**NB!:** Remember it will truncate table forst. Do it outside of normal operations hours!
+**NB!:** Remember it will truncate table first. Do it outside of normal operations hours!
 
 After triggering resync you will see that table got added to the `local_sync_status` with a status `Data sync` or `Ask for sync`.
 

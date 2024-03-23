@@ -117,9 +117,11 @@ We then restarted the replication and used the following query on the source dat
 
 ```sql
 select   pid, client_addr, application_name, state, sync_state,
-         pg_wal_lsn_diff(sent_lsn, write_lsn) as write_lag,
-         pg_wal_lsn_diff(sent_lsn, flush_lsn) as flush_lag,
-         pg_wal_lsn_diff(sent_lsn, replay_lsn) as replay_lag
+         pg_wal_lsn_diff(pg_current_wal_lsn(),sent_lsn) AS sent_lag,
+         pg_wal_lsn_diff(sent_lsn,flush_lsn) AS receiving_lag,
+         pg_wal_lsn_diff(flush_lsn,replay_lsn) AS replay_lag,
+         pg_wal_lsn_diff(pg_current_wal_lsn(),replay_lsn) AS total_lag,
+         now()-reply_time AS reply_delay
 from pg_stat_replication;
 ```
 
