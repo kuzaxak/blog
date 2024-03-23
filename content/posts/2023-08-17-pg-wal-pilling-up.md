@@ -17,8 +17,7 @@ tldr: |
 
 ## Intro
 
-We manage two clusters, each comprising of two nodes interconnected through logical replication. 
-Our chosen tool to manage databases within Kubernetes is the patroni [postgres operator][3].
+Our setup consists of two clusters, each with two nodes interconnected through logical replication managed by the [Patroni PostgreSQL operator][3].
 
 ```
  Prod                   
@@ -35,15 +34,13 @@ Our chosen tool to manage databases within Kubernetes is the patroni [postgres o
  SIT (Beta)
 ```
 
-After the PG15 upgrade, we received an alert notifying us of a rapidly growing WAL,
-at this point is wasn't clear what is a root cause for such behaviour. 
+After upgrading to PostgreSQL 15, we received an alert about rapidly growing WAL files. The root cause was not immediately apparent, prompting an investigation.
 What follows is an account of our endeavors to mitigate this issue and the pivotal 
 lessons we learned along the way.
 
-## Research and Breaking Things
+## Investigation and Missteps
 
-Mistakes were made. While scouring the internet for solutions, 
-we stumbled upon a [recommendation][1] which prompted us to inspect the latest checkout file.
+In an attempt to resolve the issue, we came across a [recommendation][1] to inspect the latest checkpoint file using the pg_controldata command.
 
 ```
 root@main-db-1:/home/postgres# pg_controldata -D /home/postgres/pgdata/pgroot/data
@@ -52,9 +49,7 @@ Latest checkpoint's REDO WAL file: 00000001000012A5000000E2
 ...
 ```
 
-After observing the `REDO WAL file: 00000001000012A5000000E2`, and noting that files
-had been renamed in `data/pg_wal/archive_status/` to `.done` extensions, 
-I initiated manual removal to reclaim space using the `pg_archivecleanup` command.
+Noticing that files in `data/pg_wal/archive_status/` had been renamed with `.done` extensions, we proceeded to manually remove them using the `pg_archivecleanup` command to reclaim space.
 
 ```
 pg_archivecleanup -d /home/postgres/pgdata/pgroot/data/pg_wal 00000001000012A5000000E0
@@ -64,18 +59,23 @@ pg_archivecleanup: removing file "/home/postgres/pgdata/pgroot/data/pg_wal/00000
 ...
 ```
 
-Job completed, only to realize replication on the secondary had halted. 
-The replication wasn't just paused; it was thoroughly disrupted.
+However, this action inadvertently disrupted the replication on the secondary node. To verify the replication status, we ran the following query on the receiver side (beta):
 
 ```sql
+\c database_name
 select subscription_name, status FROM pglogical.show_subscription_status();
+```
+
+The output confirmed that the replication was down:
+
+```
     subscription_name    | status
 -------------------------+--------
  sit_main_db             | down
 (1 row)
 ```
 
-A [query][2] provided further insights:
+To gain further insights, we used another [query][2] to check the replication slots and their associated WAL files on the sender side (prod):
 
 ```sql
 SELECT slot_name,
@@ -86,7 +86,7 @@ SELECT slot_name,
 FROM pg_replication_slots;
 ```
 
-The results highlighted the files I'd inadvertently deleted. 
+The results highlighted the WAL files that were inadvertently deleted:
 
 ```
  main_db_0                               | 00000001000012A5000000E5
@@ -97,26 +97,23 @@ The results highlighted the files I'd inadvertently deleted.
  pgl_sentiment_prod_3b3f93a_sit_m5397d6e | 00000001000012A10000007C
 ```
 
-Thankfully, we utilized wal-g for WAL storage in our S3 for point-in-time recovery.
+## Recovery Process
 
-## Recovery
-
-While a manual `wal-g` restoration was on the cards, the complexity urged me to freshly 
-initialize another instance in the `patroni` cluster.
+Fortunately, we had WAL files stored in S3 using wal-g for point-in-time recovery. Instead of manually restoring with wal-g, we decided to initialize a fresh instance in the Patroni cluster:
 
 ```shell
 patronictl reinit main-db main-db-0
 ...
 ```
 
-Having restored the WAL to its original state, I initiated a failover:
+After restoring the WAL to its original state, we initiated a failover:
 
 ```shell
 patronictl failover
 ...
 ```
 
-I restarted the replication and discovered a query that showcased the replication lag for our most data-intensive database:
+We then restarted the replication and used the following query on the source database to monitor the replication lag for our most data-intensive database:
 
 ```sql
 select   pid, client_addr, application_name, state, sync_state,
@@ -125,6 +122,8 @@ select   pid, client_addr, application_name, state, sync_state,
          pg_wal_lsn_diff(sent_lsn, replay_lsn) as replay_lag
 from pg_stat_replication;
 ```
+
+The output showed the replication lag for each subscriber:
 
 ```
   pid  | client_addr |        application_name         |   state   | sync_state |  write_lag  |  flush_lag  | replay_lag
@@ -137,7 +136,7 @@ from pg_stat_replication;
  79684 | 10.24.134.7 | main-db-1                       | streaming | async      |           0 |           0 |           0
 ```
 
-After a while, the replication caught up, and WAL files were appropriately managed and removed from the disk.
+Eventually, the replication caught up, and WAL files were properly managed and removed from the disk.
 
 ```
 postgres=# SELECT slot_name,
@@ -154,6 +153,26 @@ FROM pg_replication_slots;
  pgl_prod_828fc61_sit_meced8c6                 | 00000002000012A6000000BE
  pgl_data_prod_0c0d721_sit_m6d604ee            | 00000002000012A6000000BE
  pgl_sentiment_prod_3b3f93a_sit_m5397d6e       | 00000002000012A6000000BE
+```
+
+## Additional Tips for Debugging pglogical Replication
+
+1. Monitor the replication delay on the provider side:
+
+```sql
+SELECT slot_name,
+       lpad((pg_control_checkpoint()).timeline_id::text, 8, '0') ||
+       lpad(split_part(restart_lsn::text, '/', 1), 8, '0') ||
+       lpad(substr(split_part(restart_lsn::text, '/', 2), 1, 2), 8, '0')
+       AS wal_file,
+	   pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS replication_delay
+FROM pg_replication_slots;
+```
+
+2. Check per table status on receiver side:
+
+```sql
+SELECT * FROM pglogical.local_sync_status;
 ```
 
 ## Takeaways
