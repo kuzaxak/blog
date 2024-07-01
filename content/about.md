@@ -1,7 +1,7 @@
 ---
 title: "About Me"
 description: |
-    Hi, my name is Vladimir Kuznichenkov. I am a Senior Infrastructure Engineer.
+    Hi, my name is Vladimir Kuznichenkov. I am a Staff Infrastructure Engineer.
     This blog is my attempt to synthesize and share what I’ve learned along the way.
     Mainly, I'll share blog posts related to Infrastructure, Firmware, and Hardware.
 tags: []
@@ -11,7 +11,7 @@ slug: "about"
 ---
 
 
-Hi, my name is Vladimir Kuznichenkov. I am a Senior Infrastructure Engineer.
+Hi, my name is Vladimir Kuznichenkov. I am a Staff Infrastructure Engineer.
 This blog is my attempt to synthesize and share what I’ve learned along the way.
 Mainly, I'll share blog posts related to Infrastructure, Firmware, and Hardware.
 
