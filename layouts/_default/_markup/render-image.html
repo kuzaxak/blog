@@ -11,7 +11,11 @@
 */}}
 <figure class="image-caption">
     <img alt="{{ $.Text }}"
+        {{- if ne $img.MediaType.SubType "svg" }}
         width="{{ $img.Width }}"
+        {{- else }}
+        width="750px"
+        {{- end }}
         src="{{ $img.Permalink }}" />
     <figcaption>{{ with $.Title | safeHTML }}{{ . }}{{ end }}</figcaption>
 </figure>
