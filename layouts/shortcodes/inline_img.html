@@ -1,0 +1,16 @@
+{{/* Shortcode: inline_img Renders a page bundle image inline with text. Usage:
+{{< inline_img src="image.png" alt="Alt text" >}} */}} {{ $src := .Get "src" }}
+{{ $alt := .Get "alt" | default "" }} {{ with .Page.Resources.GetMatch $src }}
+<img
+    src="{{ .RelPermalink }}"
+    alt="{{ $alt }}"
+    style="
+        display: inline-block;
+        vertical-align: middle;
+        height: 8em;
+        margin: 0 0.2em;
+    "
+/>
+{{ else }} {{/* A warning that the image was not found in the page bundle */}}
+<span style="color: red; font-weight: bold">[Image not found: {{ $src }}]</span>
+{{ end }}
