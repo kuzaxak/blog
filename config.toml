@@ -81,6 +81,11 @@ enableRobotsTXT = true
     name = "./about"
     url = "/about"
     weight = 3
+  [[menu.main]]
+    identifier = "cv"
+    name = "./cv"
+    url = "/cv"
+    weight = 4
 
 
   [[menu.footer]]
