@@ -1,5 +1,5 @@
 ---
-title: "To NAT or Not to NAT? Multus CNI for Telco Workloads on Kubernetes"
+title: "To be or NAT to be? Multus CNI for Telco Workloads on Kubernetes"
 description: "A practical story about running SIP and RTP workloads on EKS with Multus CNI, per-pod public identity, and explicit routing."
 tags: ["EKS", "Multus CNI", "VoIP", "WebRTC", "SIP", "Network"]
 date: 2025-11-28
