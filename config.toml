@@ -1,5 +1,5 @@
 baseURL = "https://kuzaxak.dev/"
-languageCode = "en-us"
+locale = "en-us"
 title = "Vladimir Kuznichenkov | Engineer"
 author = "Vladimir Kuznichenkov"
 theme = "archie"
