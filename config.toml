@@ -32,6 +32,7 @@ enableRobotsTXT = true
   ShowFullTextinRSS = true
   useCDN = true
   favicon = "/favicon.ico"
+  customCSS = ["css/image-zoom.css"]
 
 # Social Tags
 [[params.social]]

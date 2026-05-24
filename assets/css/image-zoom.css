@@ -1,0 +1,126 @@
+img {
+  height: auto;
+}
+
+.image-caption {
+  width: fit-content;
+}
+
+.image-frame {
+  display: inline-block;
+  line-height: 0;
+  max-width: 100%;
+  position: relative;
+}
+
+figure img {
+  height: auto;
+  max-height: none;
+  width: auto;
+}
+
+.image-caption img {
+  max-height: min(80vh, 900px);
+  max-width: min(100%, 1200px);
+}
+
+.image-zoom-button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d7d7d7;
+  border-radius: 4px;
+  color: #222;
+  cursor: pointer;
+  display: flex;
+  height: 2rem;
+  justify-content: center;
+  line-height: 1;
+  opacity: 0.85;
+  padding: 0;
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  width: 2rem;
+}
+
+.image-frame:hover .image-zoom-button,
+.image-zoom-button:focus {
+  opacity: 1;
+}
+
+.image-zoom-button:hover,
+.image-zoom-button:focus {
+  background: #fff;
+}
+
+.image-zoom-button svg {
+  height: 1.1rem;
+  width: 1.1rem;
+}
+
+.image-zoom-modal[hidden] {
+  display: none;
+}
+
+.image-zoom-modal {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.86);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1.5rem;
+  position: fixed;
+  z-index: 1000;
+}
+
+.image-zoom-modal-content {
+  max-height: 100%;
+  max-width: 100%;
+  text-align: center;
+}
+
+.image-zoom-modal img {
+  background: #fff;
+  border: 0;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.35);
+  height: auto;
+  max-height: calc(100vh - 6rem);
+  max-width: calc(100vw - 3rem);
+  width: auto;
+}
+
+.image-zoom-caption {
+  color: #fff;
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+}
+
+.image-zoom-close {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d7d7d7;
+  border-radius: 4px;
+  color: #222;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 1.1rem;
+  height: 2.25rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  width: 2.25rem;
+}
+
+.image-zoom-close:hover,
+.image-zoom-close:focus {
+  background: #fff;
+}
+
+body.image-zoom-open {
+  overflow: hidden;
+}
