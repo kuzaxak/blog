@@ -49,6 +49,10 @@ def generate_markdown(cv):
         'slug: "cv"',
         "---",
         "",
+        f"**{cv['name']}** — {cv['title']}",
+        "",
+        f"{cv['location']} | [Email](mailto:{cv['email']}) | [GitHub]({cv['github']}) | [LinkedIn]({cv['linkedin']}) | [Website]({cv['website']})",
+        "",
         "[Download PDF version](/cv.pdf)",
         "",
         "## Profile",
@@ -151,7 +155,7 @@ def generate_latex(cv):
 
 \section*{{Profile}}
 
-{cv['profile'].strip()}
+{escape_tex(cv['profile'].strip())}
 
 \section*{{Work history}}
 
@@ -209,6 +213,9 @@ def compile_pdf():
     pdflatex = shutil.which("pdflatex") or "/Library/TeX/texbin/pdflatex"
     pdf_output = SCRIPT_DIR / "cv.pdf"
     static_output = SCRIPT_DIR.parent / "static" / "cv.pdf"
+
+    for suffix in (".aux", ".log", ".out"):
+        (SCRIPT_DIR / f"cv{suffix}").unlink(missing_ok=True)
 
     for _ in range(2):
         result = subprocess.run(

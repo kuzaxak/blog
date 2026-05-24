@@ -7,12 +7,11 @@ linkedin: https://www.linkedin.com/in/u-kuznichenkau/
 website: https://kuzaxak.dev/
 
 profile: |
-  Staff Infrastructure Engineer with over 10 years of experience designing scalable, cloud-native systems. Expert in
-  navigating the intersection of complex networking requirements (Telco/VoIP) and modern container orchestration.
-  Effective communicator who bridges technical and business stakeholders, with a proven track record in establishing
-  Developer Experience (DevEx) initiatives, optimizing petabyte-scale data pipelines, and driving cost-efficient
-  architectural migrations on AWS. Passionate about mentoring engineers and fostering cross-functional collaboration
-  to build reliable platforms that accelerate engineering velocity.
+  Staff Infrastructure / Platform Engineer with 10+ years building AWS and Kubernetes platforms for SaaS and telecom
+  workloads. Recent work includes cutting logging infrastructure costs by 60% through an Elasticsearch-to-Quickwit
+  migration, designing NAT-less Kubernetes networking for SIP/WebRTC workloads, and replacing AWS Managed VPN with
+  vSRX/BGP to reduce monthly VPN spend from $10k+ to ~$1k. I work across platform architecture, production operations,
+  and developer experience, turning complex infrastructure into reliable primitives product teams can use safely.
 
 experience:
   - title: Staff Infrastructure Engineer
@@ -21,12 +20,12 @@ experience:
     period: July 2024 — Present
     items:
       - title: "Cost Engineering & Observability Architecture"
-        description: "Collaborated with product and platform teams to architect a next-generation logging platform by migrating from Elasticsearch to Quickwit (Rust-based search). Designed an async ingestion pipeline via AWS Lambda, achieving a fully stateless runtime on EKS and 100% write durability during traffic spikes. Reduced annual infrastructure costs by 60% while scaling the system to petabyte-level retention."
+        description: "Architected an Elasticsearch-to-Quickwit logging migration with an async AWS Lambda ingestion pipeline and stateless EKS runtime. Reduced annual infrastructure costs by 60% while supporting petabyte-scale retention and durable writes during traffic spikes."
       - title: "Kubernetes Networking (Telecom/VoIP)"
         description: "Led the design and implementation of a Kubernetes-native networking solution for SIP signaling and WebRTC media workloads."
         subitems:
           - "Partnered with platform and telecom teams to implement a custom Multus CNI integration, provisioning direct public identities for pods and achieving zero port translation (NAT-less) connectivity for Kamailio nodes."
-          - "Standardized the implementation to maintain Developer Experience, allowing teams to deploy complex telecom stacks using standard K8s primitives without managing low-level networking."
+          - "Standardized the implementation so teams could deploy telecom workloads with normal Kubernetes primitives instead of managing low-level networking."
       - title: "VPN Cost Optimization"
         description: "Designed a Site-to-Site VPN solution using vSRX and BGP with AWS Transit Gateway for high availability, replacing AWS Managed VPN and reducing costs from $10k+/month to $1k/month."
       - title: "Capacity Planning & Cross-functional Collaboration"
@@ -36,13 +35,13 @@ experience:
     company: Glia
     location: Tallinn, Estonia
     period: August 2019 — July 2024
-    summary: "Glia is an all-in-one digital customer service platform with call-centre capabilities. Operating as a cloud-native SaaS offering in AWS based on the EKS stack."
+    summary: "Glia is an all-in-one digital customer service platform with contact-center capabilities, operating as a cloud-native SaaS offering on AWS and EKS."
     items:
       - description: "Led cross-team adoption of Istio as the cluster-wide Service Mesh, implementing a Zero Trust architecture via mTLS encryption to meet strict SOC2 and enterprise security compliance, achieving 99.99% service availability."
       - description: "Implemented CD strategies for infrastructure management using Helm and Terraform alongside Jenkins pipelines, supporting 50+ microservices across multiple environments."
       - title: "Developer Experience (DevEx)"
         description: "Collaborated with 8 engineering teams to spearhead the creation of ephemeral, on-demand sandbox environments, reducing environment provisioning from days to minutes and eliminating testing bottlenecks."
-      - description: "Co-founded and helped grow a dedicated Developer Experience (DevExp) team serving 60+ engineers, focusing on building tools, automating processes, and creating a streamlined development environment."
+      - description: "Co-founded and helped grow a dedicated Developer Experience (DevEx) team serving 60+ engineers, focusing on building tools, automating processes, and creating a streamlined development environment."
 
   - title: Solution Architect
     company: Insly
@@ -50,7 +49,7 @@ experience:
     period: January 2018 — June 2019
     items:
       - title: "Cloud Transformation"
-        description: "Led a team of 3 engineers to architect and execute the strategic migration from a single-tenant on-premise legacy solution to a multi-tenant, cloud-native SaaS platform on Kubernetes, reducing deployment frequency from monthly to daily."
+        description: "Led a team of 3 engineers to architect and execute the strategic migration from a single-tenant on-premise legacy solution to a multi-tenant, cloud-native SaaS platform on Kubernetes, increasing release cadence from monthly deployments to daily deployments."
       - title: "DevOps Culture"
         description: "Evangelized DevOps practices across the organization, building the initial CI/CD pipelines using Kubernetes and Jenkins, significantly reducing feature time-to-deliver and modernizing the development lifecycle."
 
@@ -67,7 +66,7 @@ prior_experience:
   - title: PHP Developer
     company: Pictagram
     period: 2015 — 2016
-    description: "Designed hardware-software integration for IoT vending machines using Socket communication and VPN tunnelling."
+    description: "Designed hardware-software integration for IoT vending machines using socket communication and VPN tunneling."
   - title: PHP Developer
     company: Unex Group
     period: 2013 — 2015
@@ -85,12 +84,12 @@ skills:
   - category: Backend & Scripting
     items: Python, Go, Rust, PHP, Elixir, Bash
   - category: Observability
-    items: Prometheus, Victoria, Grafana, ELK Stack / OpenSearch, Quickwit
+    items: Prometheus, VictoriaMetrics, Grafana, ELK Stack / OpenSearch, Quickwit
   - category: Telecom/VoIP
     items: Kamailio, FreeSWITCH, SIP/RTP, WebRTC
 
 education:
-  degree: Bachelor's Degree
+  degree: Bachelor's Degree, Medical Engineering
   institution: Belarusian State University of Informatics and Radioelectronics
   location: Minsk, Belarus
   year: 2017
