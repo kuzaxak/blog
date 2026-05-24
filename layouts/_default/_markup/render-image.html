@@ -9,14 +9,19 @@
     {{ $medium := $large.Fill "726x402" -}}
     {{ $small := $medium.Fill "458x254" -}}
 */}}
-<figure class="image-caption">
-    <img alt="{{ $.Text }}"
-        {{- if ne $img.MediaType.SubType "svg" }}
-        width="{{ $img.Width }}"
-        {{- else }}
-        width="750px"
-        {{- end }}
-        src="{{ $img.Permalink }}" />
+<figure class="image-caption image-zoomable">
+    <div class="image-frame">
+        <img alt="{{ $.Text }}"
+            {{- if ne $img.MediaType.SubType "svg" }}
+            width="{{ $img.Width }}"
+            {{- else }}
+            width="750px"
+            {{- end }}
+            src="{{ $img.RelPermalink }}" />
+        <button class="image-zoom-button" type="button" data-full-src="{{ $img.RelPermalink }}" aria-label="Open image full size" title="Open full size">
+            <i data-feather="zoom-in" aria-hidden="true"></i>
+        </button>
+    </div>
     <figcaption>{{ with $.Title | safeHTML }}{{ . }}{{ end }}</figcaption>
 </figure>
 {{- else -}}

@@ -42,3 +42,7 @@
     feather.replace();
 </script>
 {{- end -}}
+{{- with resources.Get "js/image-zoom.js" }}
+{{ $imageZoom := . | fingerprint }}
+<script defer src="{{ $imageZoom.RelPermalink }}"></script>
+{{- end }}
