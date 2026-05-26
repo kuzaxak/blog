@@ -283,7 +283,7 @@ For context, I built it from arm64 UniFi OS packages using the same broad approa
 
 The important networking fact is this: the container could run, and it could be attached to a Docker macvlan network with `10.255.255.200/24`. Everything below is about making that address behave like a real office LAN host.
 
-The image path is a separate article. The version I want to write next is the one about making UniFi Access believe Docker is a console: firmware extraction, package repacking, `ustorage` and `mdadm` shims, the `UNVR` identity trick, nginx setup patches, PostgreSQL clusters, and the build-time guards that keep future firmware upgrades honest.
+The image path is a separate article. That write-up is now [Vol 2: Sixty Seconds to Nothing][vol2]. It covers making UniFi Access believe Docker is a console: firmware extraction, package repacking, `ustorage` and `mdadm` shims, the `UNVR` identity trick, nginx setup patches, PostgreSQL clusters, and the build-time guards that keep future firmware upgrades honest.
 
 ![Container image build flow](./image-build.png)
 
@@ -971,6 +971,7 @@ For a homelab access control system that should not depend on Ubiquiti consoles 
 ## References
 
 - [dciancu/unifi-protect-unvr-docker-arm64][dciancu] - the foundation pattern this work extends
+- [Vol 2: Sixty Seconds to Nothing][vol2]
 - [UniFi Access on UniFi Consoles - support article][ubnt-access-consoles]
 - [Getting Started with UniFi Access - ports and communication model][ubnt-access-getting-started]
 - [DHCP Option 43 for UniFi Access devices - r/UNIFI thread][reddit-opt43]
@@ -984,6 +985,7 @@ For a homelab access control system that should not depend on Ubiquiti consoles 
 - [VXLAN: RFC 7348][rfc-vxlan]
 
 [dciancu]: https://github.com/dciancu/unifi-protect-unvr-docker-arm64
+[vol2]: /posts/2026/05/26/unifi-access-unvr-daemons/
 [ubnt-access-consoles]: https://help.ui.com/hc/en-us/articles/22230509487639-UniFi-Consoles-with-UniFi-Access-Support
 [ubnt-access-getting-started]: https://help.ui.com/hc/en-us/articles/17452334269975-Getting-Started-with-UniFi-Access
 [reddit-opt43]: https://www.reddit.com/r/UNIFI/comments/16v6js7/is_dhcp_option_43_supported_by_unifi_door_access/
