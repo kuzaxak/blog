@@ -1,18 +1,57 @@
 ---
 title: "Doors Don't Route: Cloud-Hosting UniFi Access with VXLAN-over-IPSec"
-description: "A practical story about running UniFi Access on AWS arm64, extending office L2 over VXLAN-in-IPSec to a Mikrotik gateway, and the assumptions that broke along the way."
+description: "How UniFi Access adoption forced an AWS-hosted controller into the office L2 domain, and what broke along the way: DHCP option 43, VXLAN, MTU, macvlan, and Docker port publishing."
 tags: ["UniFi Access", "AWS", "Docker", "VXLAN", "IPSec", "Mikrotik", "macvlan", "Network"]
 date: 2026-05-24
 slug: "unifi-access-vxlan-over-ipsec"
 ---
 
-## The Constraint
+## Preamble: The Key Was the First Problem
 
-I had a G3 Starter Kit on the desk: one UA-G3 Door Hub Mini, one UA-G3 Wall reader. The plan was to run the UniFi Access controller in Docker on the office Synology NAS, keep everything on the local LAN, and let the door hardware adopt there.
+This did not start as a VXLAN project.
 
-Ubiquiti officially does not support this. They sell consoles with Access pre-installed and tell you to run it there. The [dciancu/unifi-protect-unvr-docker-arm64][dciancu] repository proves the application layer can be lifted off a console image; nobody has done it for Access, and the device adoption story is materially different from Protect.
+We got a small office with one physical ABLOY key. One key is fine until more than one person needs to enter the office, open it for a delivery, or get in after hours. The obvious fix was to copy the key a few times.
 
-That was the constraint I started from: a docker controller, a door hub that had to adopt through L2 discovery, and a NAS that looked like the right host until the architecture requirement broke it. AWS only entered the story after the local Synology path failed.
+Then we checked the price.
+
+Making four proper copies of that ABLOY key was expensive enough that the UniFi Access G3 Starter Kit started to look reasonable. Instead of paying for more metal keys, we could get a door hub, a reader, NFC cards, mobile unlocks, logs, and something that was at least possible to manage like the rest of the office infrastructure.
+
+So the plan was simple:
+
+1. install the G3 kit on the office door;
+2. run the Access controller somewhere local;
+3. add users;
+4. stop thinking about keys.
+
+That plan lasted until setup.
+
+The kit was not just a reader and a relay. UniFi Access expects an Access application running on a supported UniFi console. We did not have one on-site, and waiting for more hardware was not attractive. The door hardware was already on the desk, the office still had one key, and this was supposed to be a quick fix.
+
+So the lab plan became: run UniFi Access in Docker.
+
+At first this sounded like an application problem. Extract the right packages, make the services start, expose the web UI, and adopt the devices. The existing UniFi Protect Docker work suggested that this was at least possible.
+
+It turned out the hard part was not starting the application.
+
+The hard part was making a Docker container look, from the door controller’s point of view, like a real UniFi console sitting on the same office LAN.
+
+That is where the story actually begins: one expensive key copy quote, one unsupported Docker controller, and a door system that cared much more about Layer 2 discovery than I expected.
+
+## The First Constraint: Access Wanted a Console
+
+With that context, the first target was obvious: keep everything local. The office already had a Synology NAS, Docker, Portainer, Traefik, and the rest of the small-service stack. If Access could run there, the network would stay boring.
+
+Ubiquiti officially does not support this. They sell consoles with Access pre-installed and list the compatible console models in their own documentation ([docs][ubnt-access-consoles]). The [dciancu/unifi-protect-unvr-docker-arm64][dciancu] repository proves the application layer can be lifted off a console image; nobody has done it for Access, and the device adoption story is materially different from Protect.
+
+This post is the path from that wrong assumption to the final shape: UniFi Access running on AWS arm64, attached to the office broadcast domain through VXLAN-over-IPSec and a single Docker macvlan interface.
+
+The final design has three layers:
+
+1. Underlay: Mikrotik to AWS IPSec.
+2. L2 extension: VXLAN over that IPSec tunnel.
+3. Container identity: UniFi Access attached only to the office bridge through macvlan.
+
+Most of the debugging pain came from confusing those layers. A ping proved the underlay. UDP discovery proved L2. A stable reader proved MTU and management traffic. The web UI proved only the browser path.
 
 The examples below use real values from the deployment, sanitized only where they would not help a reader reproduce the design.
 
@@ -20,13 +59,15 @@ The examples below use real values from the deployment, sanitized only where the
 
 ## What "Adoption" Actually Means for Access
 
-UniFi Access bootstrapping starts with local discovery: devices broadcast on UDP `10001`, and in this unsupported container setup the Hub Mini only offered itself to a controller that answered from the same L2 broadcast domain. Ubiquiti's own port list calls `10001/udp` the Access device discovery path ([docs][ubnt-access-getting-started]).
+UniFi Access is not purely L2 forever. Ubiquiti documents the device ports as `10001/udp` for discovery, `8080` for adoption, `12443` for HTTPS device communication, and `12812` for MQTT messaging. The same page says Access Control Hubs communicate with the Access application over IP, while readers and hubs must stay on the same L2 network ([docs][ubnt-access-getting-started]).
+
+The part that broke this unsupported Docker deployment was the first discovery/adoption path. In this setup, the Hub Mini only offered itself to a controller that answered from the same discovery domain.
 
 That sounds the same as Network adoption, but it is not. UniFi Network firmware honors **DHCP option 43** as a fallback (a controller IP encoded as `01 04 <ip-bytes>`), and the devices have a `set-inform` CLI over SSH. Access devices have neither. A community-confirmed [thread][reddit-opt43] documents this directly:
 
 > "Access needs to see the other device in the same VLAN (broadcast domain)."
 
-I tested option 43 anyway. The MikroTik sent it, the lease included the encoded controller IP, the Hub Mini ignored it. No `set-inform`, no SSH, no fallback. The device only adopted once the controller could participate in the L2 discovery exchange. After adoption, normal controller-to-device traffic can be L3-routed; the first discovery step was the hard constraint.
+I tested option 43 anyway. The MikroTik sent it, the lease included the encoded controller IP, the Hub Mini ignored it. No `set-inform`, no SSH, no useful fallback for this case. The device only adopted once the controller could participate in the discovery exchange.
 
 That single fact controls every networking decision in this story.
 
@@ -58,7 +99,7 @@ sequenceDiagram
 
 ---
 
-## Wrong Assumption 1: Run It on the Synology
+## Dead End 1: The Local NAS Was the Wrong CPU
 
 The first idea was the obvious one. We had a DSM 7.2.2 box on the office LAN, with Portainer, Traefik, the existing service mesh, and plenty of CPU. Why deploy anywhere else?
 
@@ -103,7 +144,7 @@ The Synology had to come out of the picture as the controller host.
 
 ---
 
-## Wrong Assumption 2: AWS arm64 + IPSec L3 + DHCP Option 43
+## Dead End 2: A Working L3 Tunnel Still Did Not Carry Discovery
 
 The next plan was cleaner architecturally. We have AWS, we have arm64 instances (`t4g.medium`), and we have a Mikrotik RB5009 with a static public IP that already terminates one IPSec tunnel.
 
@@ -178,7 +219,7 @@ The discovery model was the architectural constraint, not a knob to tune. Either
 
 ---
 
-## The Shape That Matched the Protocol
+## The Shape That Matched the Protocol: Extend L2, Do Not Fight It
 
 The fix had to bring the controller container into the office broadcast domain at L2, while keeping its lifecycle in AWS. The shape that worked:
 
@@ -234,11 +275,15 @@ The L2 bridge made that true. AWS became invisible from the protocol's point of 
 
 ---
 
-## Building the Container Image
+## About the Controller Image
 
-The application layer was the dciancu Protect approach with Access surgery on top.
+The controller image is not the main subject of this post. It deserves its own write-up.
 
-The base layer comes from extracting a UCG-Max firmware binary - which is publicly downloadable and `binwalk`able - through `dpkg-repack` against the unpacked rootfs:
+For context, I built it from arm64 UniFi OS packages using the same broad approach as the existing UniFi Protect container work. Access needed several console-assumption patches: storage reporting, pre-setup hostname handling, and console identity. The final image runs UniFi Core, UniFi Access, and the required PostgreSQL services inside a Debian arm64 systemd container.
+
+The important networking fact is this: the container could run, and it could be attached to a Docker macvlan network with `10.255.255.200/24`. Everything below is about making that address behave like a real office LAN host.
+
+The image path is a separate article. The version I want to write next is the one about making UniFi Access believe Docker is a console: firmware extraction, package repacking, `ustorage` and `mdadm` shims, the `UNVR` identity trick, nginx setup patches, PostgreSQL clusters, and the build-time guards that keep future firmware upgrades honest.
 
 ![Container image build flow](./image-build.png)
 
@@ -255,79 +300,11 @@ flowchart LR
 ```
 {{< /details >}}
 
-The Protect repo's pattern handles most of the heavy lifting. Access required a small number of additional patches inside the image, baked in at build time. These exist as `if ! sed -i ... exit 1` guards so a future firmware version that drifts from the pattern fails the build loudly instead of silently breaking at runtime.
-
-### Patch 1: ustorage gRPC fallback
-
-UniFi Core polls a gRPC server on `127.0.0.1:11052` for storage information. That server only exists on real UniFi consoles. Without intervention, the setup wizard fails with:
-
-```
-[grpc] Failed to connect to the gRPC server: 14 UNAVAILABLE:
-No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:11052.
-   at ServiceClientImpl.storageSettings (...)
-```
-
-Protect's sed flips a JS conditional so the application takes the "shell ustorage" path instead:
-
-```bash
-sed -i '/return at()?s.push/{s//return at(),!0?s.push/;h};${x;/./{x;q0};x;q1}' \
-    /usr/share/unifi-core/app/service.js
-```
-
-The patched path calls `/usr/bin/ustorage` and `/sbin/mdadm`, which I ship as fake responses generating plausible disk/RAID JSON.
-
-### Patch 2: pre-setup nginx hostname allowlist
-
-UniFi Core ships with a pre-setup nginx that redirects anything except `unifi`, `localhost`, or a raw IP to `https://unifi`:
-
-```nginx
-if ($host !~* ^(unifi|localhost|[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|\[[a-f0-9:]+\])$) {
-    return 302 $scheme://unifi;
-}
-```
-
-A reverse-proxied hostname like `access.example.com` hits this regex and bounces. The build relaxes it so any non-empty `$host` passes:
-
-```bash
-sed -i 's|host !~\* \^(unifi|host !~* ^(.+|' \
-    /usr/share/unifi-core/http/site-setup.conf
-```
-
-The file is then in `/usr/share/...`, which is the template directory. After a factory reset, UniFi Core copies the template into `/data/unifi-core/config/http/`, preserving the patch.
-
-### Patch 3: console identity
-
-The hardware identity layer in UniFi OS is a script at `/sbin/ubnt-tools`. The original `ubnt-tools id` reports the actual board sysid. My shim writes a configurable identity based on the `DEVICE` env var (`UNVR`, `UCG_MAX`, `UDM_PRO_MAX`, etc).
-
-The first attempt used `UCG_MAX` because the extracted firmware was UCG-Max. The setup wizard immediately broke with "Unexpected error during setup" because UCG-Max has `hasGateway: true` in its features and the wizard tried to run gateway-only steps (WAN probe, UDAPI client) that fail in a container. Switching the identity to `UNVR` (sysid `0xea16`, no gateway features) made the wizard skip those steps. That matches what Protect users do in docker.
-
-### What the post-install block actually applies
-
-```dockerfile
-RUN echo 'exit 0' > /usr/sbin/policy-rc.d \
-    && if ! sed -i '/return at()?s.push/{s//return at(),!0?s.push/;h};${x;/./{x;q0};x;q1}' \
-         /usr/share/unifi-core/app/service.js; then \
-         echo 'ERROR: ustorage sed pattern not found' && exit 1; \
-    fi \
-    && if ! sed -i 's|host !~\* \^(unifi|host !~* ^(.+|' \
-         /usr/share/unifi-core/http/site-setup.conf; then \
-         echo 'ERROR: site-setup.conf hostname patch failed' && exit 1; \
-    fi \
-    && mv /sbin/mdadm /sbin/mdadm.orig \
-    && mv /sbin/ubnt-tools /sbin/ubnt-tools.orig \
-    && systemctl enable storage_disk dbpermissions fix_hosts \
-         fix_apt_ubiquiti_sources init_console init_device \
-    && echo -e '\n\nexport PGHOST=127.0.0.1\n' \
-         >> /usr/lib/ulp-go/scripts/envs.sh
-```
-
-That covers it. Image is ~2.4 GB, runs as the Protect-pattern Debian-11 systemd container, with `unifi-access.service`, `unifi-core.service`, and two PostgreSQL clusters (`main` and `access` on ports 5432 and 5435).
-
 ---
 
-## VXLAN Underlay
+## Building the L2 Extension
 
-The VXLAN tunnel uses UDP 4789. With both endpoints having explicit unicast addresses, the inner Ethernet frames travel inside outer UDP packets between `10.255.255.1` (Mikrotik LAN side) and `172.31.26.37` (EC2 private IP).
+The VXLAN tunnel uses UDP 4789. With both endpoints having explicit unicast addresses, the inner Ethernet frames travel inside outer UDP packets between `10.255.255.1` (Mikrotik LAN side) and `172.31.26.37` (EC2 private IP). Linux VXLAN is UDP-based, and the kernel documentation shows the IANA-assigned `4789` port in its example ([docs][kernel-vxlan-docs]).
 
 The existing IPSec policy is `10.255.255.0/24 ↔ 172.31.26.37/32`. VXLAN outer packets between those two addresses match the policy, so they ride encrypted inside ESP. No new IPSec policy was needed; the L2 extension reuses the existing L3 tunnel as its transport.
 
@@ -452,9 +429,13 @@ bridge fdb append 00:00:00:00:00:00 dev vxlan0 dst 10.255.255.1
 
 ---
 
-## MTU Accounting
+## MTU: The Calculation Was Right, the Fix Was in the Wrong Place
 
-The first version of my MTU math was wrong because I mixed two different accounting layers. Ethernet headers are on the wire, but they are not part of the `1500` byte IP MTU. VXLAN, however, carries an entire inner Ethernet frame inside UDP, so that inner Ethernet header does consume space inside the encapsulated packet. IPSec NAT-T then wraps the VXLAN packet again.
+The first VXLAN version made discovery work. That was misleading.
+
+I had already reduced `br-office` and `vxlan0` to 1380, so I assumed the encapsulation problem was handled. The reader proved otherwise. It adopted, showed "Getting Ready", then went offline when Access started pushing real config over the management channel.
+
+The first version of my MTU math was also too confident. Ethernet headers are on the wire, but they are not part of the `1500` byte IP MTU. VXLAN is different because it carries an inner Ethernet frame inside UDP. IPSec NAT-T then wraps the VXLAN packet again; strongSwan documents ESP-in-UDP NAT-T as inserting an eight-byte UDP header on port `4500` ([docs][strongswan-nat-t]).
 
 The useful way to count it is from the narrowest public IP path, assuming a normal 1500-byte WAN MTU:
 
@@ -476,26 +457,9 @@ M <= 1500 - (20 + 8 + ESP_OVERHEAD + 20 + 8 + 8 + 14)
 M <= 1422 - ESP_OVERHEAD
 ```
 
-`ESP_OVERHEAD` is not a single constant. It depends on cipher mode, IV size, integrity tag, padding, and NAT-T details. In practice it can easily put the real ceiling somewhere around the high 1300s, and path-MTU discovery through this stack is not something I wanted the door controller to depend on.
+`ESP_OVERHEAD` is not a single constant. It depends on cipher mode, IV size, integrity tag, padding, and NAT-T details. The exact number mattered less than the lesson: VXLAN-over-IPSec made the safe payload smaller, and path-MTU discovery through this stack was not something I wanted the door controller to depend on.
 
-That is why the final setup uses two numbers:
-
-| Interface | MTU | Why |
-|---|---:|---|
-| `br-office` and `vxlan0` / `vxlan-aws` | 1380 | Keeps the bridge and VXLAN tunnel below the obvious encapsulation cliff |
-| Container macvlan interface | 1200 | Forces a safe TCP MSS for Access device management traffic |
-
-The important part is the last row. Setting only the host bridge and VXLAN MTU was not enough, because Docker created the container's macvlan interface at MTU 1500. Discovery packets still worked, but larger post-adoption TLS/MQTT flows could stall or reset. Lowering the macvlan interface to 1200 made the TCP sessions negotiate a safe MSS and the G3 reader stayed online.
-
-If you do not set MTU on `br-office`, `vxlan-aws` / `vxlan0`, and the container's macvlan interface, TCP traffic over the L2 bridge can hang under load while small UDP discovery packets continue to look healthy.
-
----
-
-## Issue Part 2: Discovery Worked, the Reader Still Went Offline
-
-The first working VXLAN design proved that discovery was alive. The Access UI could see the Hub Mini and the G3 reader. Packet captures showed the controller sending UDP discovery probes from `10.255.255.200`, and both devices answering from their office LAN addresses.
-
-Then adoption failed in a more confusing way: the G3 reader adopted, flipped through "Getting Ready", and immediately went offline again. The Hub stayed connected. The reader answered ICMP. Its TCP ports accepted connections. The UI symptom looked like a device or firmware problem, but the network was no longer completely broken. It was broken only once the controller tried to push larger post-adoption config over the management channel.
+First I lowered `br-office`, `vxlan0`, and Mikrotik's `vxlan-aws` to 1380. Discovery packets crossed the tunnel, so it looked fixed. Then the G3 reader went offline during post-adoption management. ARP, UDP discovery, SYN/SYN-ACK, and small TLS records survived. Larger controller pushes did not.
 
 This was the point where detection and debugging had to separate:
 
@@ -515,7 +479,7 @@ tcpdump -ni vxlan0 host 10.255.255.229 and '(udp port 10001 or tcp)'
 
 Capturing on `vxlan0` shows the inner office traffic after VXLAN decapsulation. That made it possible to see both facts at once: discovery packets were crossing the bridge correctly, but the post-adoption TCP flow was not surviving once real payloads started.
 
-The mistake was that I had reduced the bridge and VXLAN MTU, but the container's macvlan interface still came up at Docker's default:
+The missing interface was inside the container:
 
 ```bash
 docker exec unifi-access ip -brief link show eth1
@@ -534,7 +498,7 @@ container eth1 MTU 1500
 
 That is enough to pass ARP, UDP discovery, SYN/SYN-ACK, and small TLS records. It is not enough to make every post-adoption controller push reliable. TCP peers can negotiate an MSS that is too large for the real encapsulated path, then the larger segments or fragments disappear in the VXLAN-over-IPSec path. The user-facing result is not "MTU error"; it is "reader offline".
 
-The fix was to lower the container's office-facing NIC MTU, not just the host bridge:
+The fix was not another tunnel knob. It was lowering the container-facing NIC:
 
 ```bash
 docker exec unifi-access ip link set dev eth1 mtu 1200
@@ -549,41 +513,21 @@ docker exec unifi-access ss -tnpi dst 10.255.255.229
 
 After that, the reader stayed connected long enough for Access to push config and firmware. The G3 reader upgraded to `v3.18.11.0`; the Hub Mini upgraded to `v1.5.14.0`.
 
-The other half of the fix was removing ambiguity from Access' management network. In the intermediate two-NIC container, Access could choose `eth0` or `any-networks-id`, which resolved the controller address as the docker bridge IP (`172.18.x.x`) instead of the office-LAN macvlan IP. That still let the web UI load, but it poisoned device discovery, advertised controller identity, and invite-link generation.
-
-The controller API inside the container exposes enough to correct this:
+The image still carries a small systemd timer because Docker can recreate the macvlan interface and lose the manual MTU. The timer detects the interface by the expected office IP instead of assuming Docker will call it `eth0` or `eth1`:
 
 ```bash
-curl -sS http://127.0.0.1:12080/api/v2/settings | jq .
-curl -sS -X PUT http://127.0.0.1:12080/api/v2/settings \
-  -H 'Content-Type: application/json' \
-  --data '{"mngt_network_id":"eth0"}'
-```
-
-In the final single-macvlan design, Access still sometimes normalizes the selector back to `any-networks-id`. That is fine when the container has only one network: "All Networks" contains only `10.255.255.200/24`, so `controller_ip` remains `10.255.255.200`. The important part is that there is no docker bridge address left for Core or Access to advertise.
-
-The image still carries a systemd timer for MTU and management-network repair. It detects the interface by the expected office IP instead of assuming Docker will call it `eth0` or `eth1`:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-network_id="${ACCESS_MNGT_NETWORK_ID:-}"
 network_ip="${ACCESS_MNGT_NETWORK_IP:-10.255.255.200}"
 device_mtu="${ACCESS_DEVICE_MTU:-1200}"
-access_api="${ACCESS_API_URL:-http://127.0.0.1:12080}"
 
-if [ -z "$network_id" ] && [ -n "$network_ip" ]; then
-    network_id="$(ip -o -4 addr show | awk -v ip="$network_ip" '
-        {
-            split($4, address, "/")
-            if (address[1] == ip) {
-                print $2
-                exit
-            }
+network_id="$(ip -o -4 addr show | awk -v ip="$network_ip" '
+    {
+        split($4, address, "/")
+        if (address[1] == ip) {
+            print $2
+            exit
         }
-    ')"
-fi
+    }
+')"
 
 if ip link show "$network_id" >/dev/null 2>&1; then
     current_mtu="$(cat "/sys/class/net/$network_id/mtu")"
@@ -591,16 +535,9 @@ if ip link show "$network_id" >/dev/null 2>&1; then
         ip link set dev "$network_id" mtu "$device_mtu"
     fi
 fi
-
-curl -fsS --max-time 5 \
-    -X PUT "$access_api/api/v2/settings" \
-    -H "Content-Type: application/json" \
-    --data "{\"mngt_network_id\":\"$network_id\"}" >/dev/null 2>&1 || true
 ```
 
-The timer runs on boot and then periodically. It is intentionally idempotent: if Docker recreates the macvlan interface at the bridge MTU, the next timer run lowers it again.
-
-That was the actual transport fix. The earlier firmware theory was plausible because old G3 firmware and newer Access did produce ugly broker failures, but firmware was not the only problem. The reliable proof was this sequence:
+The reliable proof was this sequence:
 
 1. L2 discovery frames visible on `vxlan0`.
 2. Adoption started but G3 went offline during post-adoption management.
@@ -612,14 +549,16 @@ The lesson is that "device visible" is only a discovery test. For Access, the re
 
 ---
 
-## Docker Multi-Network Trap
+## The Last Trap: The Container Had Two Identities
 
 At this point I thought two networks were needed:
 
-- A **default bridge** for outbound traffic and Internet access (image pulls, ACME, NTP, etc).
-- The **office-lan macvlan** with parent=`br-office`, so the container gets a 10.255.255.x address on the bridged L2.
+- A **default bridge** for outbound traffic and Internet access.
+- The **office-lan macvlan** with parent=`br-office`, so the container gets a `10.255.255.x` address on the bridged L2.
 
-The natural Compose definition for that is:
+The mental model was understandable. Docker bridge networks use port publishing to make container ports reachable outside the host ([docs][docker-port-publishing]). Docker macvlan bridge mode makes the container appear physically attached to the network ([docs][docker-macvlan]). Access seemed to need both: bridge for public web ingress, macvlan for door hardware.
+
+The natural Compose definition was:
 
 ```yaml
 services:
@@ -641,18 +580,16 @@ networks:
     external: true
 ```
 
-This deploys. The container starts, gets both NICs, listens on the right ports inside the container. From `docker ps`:
+This deployed. The container started, got both NICs, and listened on the right ports inside the container. But from `docker ps`:
 
 ```
 NAMES          PORTS
 unifi-access   80/tcp, 443/tcp, 8080/tcp, 12442-12443/tcp
 ```
 
-That output is wrong. There is no `0.0.0.0:443->443/tcp`. The ports are *exposed* but not *published*. On the host, `ss -tlnp` shows no docker-proxy listening anywhere.
+There was no `0.0.0.0:443->443/tcp`. The ports were exposed, not published. On the host, `ss -tlnp` showed no docker-proxy listening anywhere.
 
-This is the docker-compose-v2 multi-network port-publish bug. When a service has both a bridge and a macvlan network declared in the same Compose service, the `ports:` block silently drops to "expose only".
-
-The first workaround was a two-phase deploy: Compose declared only the bridge with ports, and the macvlan was attached post-up:
+In my Compose/Engine version, this combination behaved like a bug: the service had both networks, but the published ports were only exposed, not bound on the host. I worked around it by doing the deploy in two phases: Compose declared only the bridge network with ports, then I attached the macvlan after the container was running.
 
 ![Two-phase Docker network attach](./compose-two-phase.png)
 
@@ -684,15 +621,17 @@ eth0@if31  UP  172.17.0.2/16
 eth1@if15  UP  10.255.255.200/24
 ```
 
-UniFi Core's nginx listens on `0.0.0.0:443` inside the container. It binds on both NICs. Cloudflare can reach the EIP through the bridge NIC via docker-proxy. The Hub Mini at `10.255.255.230` can reach the controller directly through the macvlan NIC because both are on the same L2 broadcast domain.
+That got the web UI working and the devices adopting, but it gave UniFi OS two local identities. UniFi Core's nginx listened on `0.0.0.0:443` inside the container. Cloudflare could reach the EIP through the bridge NIC. The Hub Mini could reach `10.255.255.200` through macvlan. Access could also see `172.17.x.x` / `172.18.x.x` and sometimes use that address in controller identity, management network selection, and invite-link generation.
 
-That workaround solved the immediate port-publish failure, but it was not the final design. Leaving the docker bridge attached later created a worse bug: UniFi OS 5.x saw `172.17.x.x` / `172.18.x.x` as a valid controller network and used it in host identity and invite-link generation. The final fix was to remove the docker bridge entirely and run Access only on `office-lan`.
+The controller API exposed the symptom:
 
----
+```bash
+curl -sS http://127.0.0.1:12080/api/v2/settings | jq .
+curl -sS http://127.0.0.1:12080/api/v2/info \
+    | jq -c '{host:.data.host.ip, wan:.data.host.wan_ip}'
+```
 
-## Then I Broke It
-
-The Cloudflare proxy returned 521 ("origin unreachable") a little later. The web path through the EIP had stopped working.
+The other problem was packet path. Docker documents that it creates firewall rules for bridge networks and port publishing, while no such rules are created for `macvlan` networks ([docs][docker-firewalls]). In my two-NIC workaround, those worlds overlapped.
 
 ![Docker port publish DNAT conflict](./docker-proxy-dnat.png)
 
@@ -731,21 +670,21 @@ flowchart TB
 ```
 {{< /details >}}
 
-The cause was docker-proxy itself. When `-p 443:443` publishes a port, docker installs an iptables DNAT rule that matches **destination port** without constraining the destination IP. The rule looks roughly like:
+The observed DNAT rule was broad enough to match traffic by destination port:
 
 ```
 DNAT  tcp  *  *  0.0.0.0/0  0.0.0.0/0  tcp dpt:443  to:172.17.0.2:443
 ```
 
-That matches traffic destined for the EIP and also matches traffic destined for the macvlan IP `10.255.255.200`. From the office, a request to `https://10.255.255.200` arrives on `br-office`, gets DNATed to `172.17.0.2:443`, and the kernel forwards it to the docker bridge instead of delivering it to the macvlan NIC that the LAN client expected.
+That matched traffic destined for the EIP and also matched traffic destined for the macvlan IP `10.255.255.200`. From the office, a request to `https://10.255.255.200` arrived on `br-office`, got DNATed to `172.17.0.2:443`, and the kernel forwarded it to the docker bridge instead of delivering it to the macvlan NIC that the LAN client expected.
 
-The two access paths conflict. The docker-proxy DNAT wins because PREROUTING runs before the bridge forwarding decision.
+The final fix was to remove the second identity:
 
-The fix had two parts:
-
-**Remove docker-proxy port publishing entirely.** No `-p` flags, no `ports:` in compose. The container is reachable only through its macvlan IP on the office LAN.
-
-**Front the web tier through the existing Synology Traefik instead.** The Synology lives on the same office LAN as the macvlan. From Traefik's perspective, the controller looks like any other LAN host; it just happens to be answered by something in AWS:
+- no docker bridge network
+- no `ports:` block
+- one macvlan interface
+- default route through the office gateway
+- web ingress through the existing Synology Traefik on the LAN
 
 ![Traefik reaches Access through the office LAN](./traefik-access-path.png)
 
@@ -758,22 +697,7 @@ flowchart LR
 ```
 {{< /details >}}
 
-The Security Group on the EC2 also got much smaller. Web access does not enter through the EIP anymore, so 80/443 from the Internet are not needed. Access ports do not need direct allowlists from the office subnet either, because that traffic now arrives encapsulated as VXLAN inside IPSec - the SG only sees the outer IPSec/UDP-4500 packets.
-
-Final inbound rules:
-
-| Proto | Port | Source | Purpose |
-|---|---|---|---|
-| UDP | 500 | Mikrotik public IP | IKE |
-| UDP | 4500 | Mikrotik public IP | IPSec NAT-T |
-| ESP (50) | - | Mikrotik public IP | ESP |
-| ICMP | - | 10.255.255.0/24 | Diagnostics over L2 |
-
-Everything else is denied. The controller has no Internet-exposed application surface. Its public identity is mediated by Cloudflare and Synology Traefik, not by an Internet-facing socket on the controller itself.
-
-There was a later third part: remove the docker bridge network from the Access container entirely. Even without published ports, the bridge address still existed inside the container. UniFi Core and Access treated it as part of the console's local network inventory, so `/api/v2/info` reported the host as `172.18.0.2` and generated invite links could inherit that unreachable address.
-
-The durable shape is a single macvlan interface:
+The durable Compose shape is boring:
 
 ```yaml
 services:
@@ -788,13 +712,74 @@ networks:
     external: true
 ```
 
-Outbound traffic still works because the container's default route points through the office gateway:
+The final container has one network interface:
 
-```
+| Interface | Subnet | Used by | Why it exists |
+|---|---|---|---|
+| `eth0` | 10.255.255.0/24 (macvlan / VXLAN bridge) | UDP 10001 discovery, MQTT 12812, Access UI 12443, outbound HTTPS, DNS, firmware checks | The only L2 identity UniFi OS and the door hardware should see |
+
+The clean post-restart check looks like this:
+
+```bash
+$ docker exec unifi-os ip -brief addr
+lo      UNKNOWN  127.0.0.1/8 ::1/128
+eth0    UP       10.255.255.200/24
+
+$ docker exec unifi-os ip route
 default via 10.255.255.1 dev eth0
+10.255.255.0/24 dev eth0 proto kernel scope link src 10.255.255.200
+
+$ docker exec unifi-os curl -sS http://127.0.0.1:12080/api/v2/info \
+    | jq -c '{host:.data.host.ip, wan:.data.host.wan_ip}'
+{"host":"10.255.255.200","wan":"10.255.255.200"}
 ```
 
-The controller no longer has any `172.18.x.x` interface to advertise.
+The Security Group on the EC2 also got much smaller. Web access does not enter through the EIP anymore, so 80/443 from the Internet are not needed. Access ports do not need direct allowlists from the office subnet either, because that traffic now arrives encapsulated as VXLAN inside IPSec - the SG only sees the outer IPSec/UDP-4500 packets.
+
+Final inbound rules:
+
+| Proto | Port | Source | Purpose |
+|---|---|---|---|
+| UDP | 500 | Mikrotik public IP | IKE |
+| UDP | 4500 | Mikrotik public IP | IPSec NAT-T |
+| ESP (50) | - | Mikrotik public IP | ESP |
+| ICMP | - | 10.255.255.0/24 | Diagnostics over L2 |
+
+Everything else is denied. The controller has no Internet-exposed application surface. Its public identity is mediated by Cloudflare and Synology Traefik, not by an Internet-facing socket on the controller itself.
+
+![Final single-interface container shape](./container-nics.png)
+
+{{< details "mermaid" >}}
+```mermaid
+flowchart LR
+    subgraph Container["unifi-access container"]
+        direction TB
+        Apps[unifi-core + unifi-access<br/>bind 0.0.0.0]
+        eth0[eth0<br/>10.255.255.200/24<br/>macvlan office-lan<br/>MTU 1200]
+        Apps --> eth0
+    end
+
+    subgraph Internet["Outbound flows"]
+        GW[Office gateway<br/>10.255.255.1]
+        FW[fw-update.ubnt.com<br/>NTP, DNS]
+    end
+
+    subgraph Office["Office L2 via VXLAN/IPSec"]
+        Hub[Door Hub Mini<br/>10.255.255.230]
+        Reader[G3 Reader<br/>10.255.255.229]
+        Synology[Synology Traefik<br/>10.255.255.245]
+    end
+
+    eth0 --> GW --> FW
+    eth0 --> Hub
+    eth0 --> Reader
+    Synology --> eth0
+
+    linkStyle 1 stroke:#999,stroke-dasharray:4 3
+    linkStyle 2 stroke:#999,stroke-dasharray:4 3
+    linkStyle 3 stroke:#999,stroke-dasharray:4 3
+```
+{{< /details >}}
 
 ---
 
@@ -892,70 +877,6 @@ The bridge had clearly learned the AWS-side MAC addresses, including the docker 
 
 On RouterOS 7.19.1 in this setup, `/interface print stats` lied for the VXLAN interface. The bridge-level statistics were correct. Trust `/interface bridge host` and `/interface bridge port print stats`, not `/interface print stats` when troubleshooting VXLAN.
 
----
-
-## Why the Container Must Not Have Two NICs
-
-The final container has one network interface:
-
-| Interface | Subnet | Used by | Why it exists |
-|---|---|---|---|
-| `eth0` | 10.255.255.0/24 (macvlan / VXLAN bridge) | UDP 10001 discovery, MQTT 12812, Access UI 12443, outbound HTTPS, DNS, firmware checks | The only L2 identity UniFi OS and the door hardware should see |
-
-This is less elegant from a cloud-networking point of view, because the container's outbound traffic goes back through the office gateway over VXLAN/IPSec. It is more correct for UniFi Access, because the application stack builds several URLs and network decisions from the local interface inventory. If a docker bridge exists, Access can advertise the bridge address even though no reader, hub, browser, or invite recipient can reach it.
-
-The clean post-restart check looks like this:
-
-```bash
-$ docker exec unifi-os ip -brief addr
-lo      UNKNOWN  127.0.0.1/8 ::1/128
-eth0    UP       10.255.255.200/24
-
-$ docker exec unifi-os ip route
-default via 10.255.255.1 dev eth0
-10.255.255.0/24 dev eth0 proto kernel scope link src 10.255.255.200
-
-$ docker exec unifi-os curl -sS http://127.0.0.1:12080/api/v2/info \
-    | jq -c '{host:.data.host.ip, wan:.data.host.wan_ip}'
-{"host":"10.255.255.200","wan":"10.255.255.200"}
-```
-
-The network timer in the image still matters. Docker creates the macvlan interface at the bridge MTU, so the timer detects the interface holding `10.255.255.200` and lowers it to 1200 after boot. That keeps device management TCP below the VXLAN/IPSec ceiling without depending on a fixed interface name.
-
-{{< details "mermaid" >}}
-```mermaid
-flowchart LR
-    subgraph Container["unifi-access container"]
-        direction TB
-        Apps[unifi-core + unifi-access<br/>bind 0.0.0.0]
-        eth0[eth0<br/>10.255.255.200/24<br/>macvlan office-lan<br/>MTU 1200]
-        Apps --> eth0
-    end
-
-    subgraph Internet["Outbound flows"]
-        GW[Office gateway<br/>10.255.255.1]
-        FW[fw-update.ubnt.com<br/>NTP, DNS]
-    end
-
-    subgraph Office["Office L2 via VXLAN/IPSec"]
-        Hub[Door Hub Mini<br/>10.255.255.230]
-        Reader[G3 Reader<br/>10.255.255.229]
-        Synology[Synology Traefik<br/>10.255.255.245]
-    end
-
-    eth0 --> GW --> FW
-    eth0 --> Hub
-    eth0 --> Reader
-    Synology --> eth0
-
-    linkStyle 1 stroke:#999,stroke-dasharray:4 3
-    linkStyle 2 stroke:#999,stroke-dasharray:4 3
-    linkStyle 3 stroke:#999,stroke-dasharray:4 3
-```
-{{< /details >}}
-
----
-
 ## What I Would Validate Before Trusting It
 
 Working in this layered topology means there are several places where a single configuration error gives the wrong-but-plausible answer. I would not trust the design until all of these pass on a clean restart:
@@ -1037,7 +958,7 @@ The explicit constraints:
 
 - MTU has to be set consistently at three layers (bridge, vxlan, container interface). Forget one and TCP flows hang under load.
 - The IPSec tunnel is on the critical path. Lose IPSec, the VXLAN encapsulation has nowhere to go, all adoption traffic stops within DPD timeout.
-- Multi-network Compose with `macvlan` plus `ports:` silently breaks port publishing, and the bridge interface can leak into UniFi OS controller identity. For this design, use a single macvlan network and no published EC2 ports.
+- In my Compose/Engine version, `macvlan` plus `ports:` exposed ports without publishing them, and the bridge interface later leaked into UniFi OS controller identity. For this design, use a single macvlan network and no published EC2 ports.
 - Docker's port-publish DNAT competes with macvlan direct access. You can have one or the other; combining them through the same iptables PREROUTING chain leaves at least one path broken.
 - The container's outbound Internet path now depends on the office gateway accepting `10.255.255.200` as a normal LAN host. Verify firmware-update URLs from inside the container after every network change.
 - In my RouterOS 7.19.1 run, VXLAN interface counters lied. Use bridge-level stats.
@@ -1053,9 +974,12 @@ For a homelab access control system that should not depend on Ubiquiti consoles 
 - [UniFi Access on UniFi Consoles - support article][ubnt-access-consoles]
 - [Getting Started with UniFi Access - ports and communication model][ubnt-access-getting-started]
 - [DHCP Option 43 for UniFi Access devices - r/UNIFI thread][reddit-opt43]
+- [Linux VXLAN kernel documentation][kernel-vxlan-docs]
 - [Linux VXLAN man page][linux-vxlan]
 - [RouterOS 7 VXLAN documentation][routeros-vxlan]
 - [Docker macvlan driver][docker-macvlan]
+- [Docker port publishing][docker-port-publishing]
+- [Docker packet filtering and firewalls][docker-firewalls]
 - [strongSwan NAT traversal][strongswan-nat-t]
 - [VXLAN: RFC 7348][rfc-vxlan]
 
@@ -1063,8 +987,11 @@ For a homelab access control system that should not depend on Ubiquiti consoles 
 [ubnt-access-consoles]: https://help.ui.com/hc/en-us/articles/22230509487639-UniFi-Consoles-with-UniFi-Access-Support
 [ubnt-access-getting-started]: https://help.ui.com/hc/en-us/articles/17452334269975-Getting-Started-with-UniFi-Access
 [reddit-opt43]: https://www.reddit.com/r/UNIFI/comments/16v6js7/is_dhcp_option_43_supported_by_unifi_door_access/
+[kernel-vxlan-docs]: https://docs.kernel.org/networking/vxlan.html
 [linux-vxlan]: https://www.man7.org/linux/man-pages/man8/ip-link.8.html
 [routeros-vxlan]: https://help.mikrotik.com/docs/spaces/ROS/pages/100007937/VXLAN
-[docker-macvlan]: https://docs.docker.com/network/drivers/macvlan/
-[strongswan-nat-t]: https://docs.strongswan.org/docs/5.9/features/natTraversal.html
+[docker-macvlan]: https://docs.docker.com/engine/network/drivers/macvlan/
+[docker-port-publishing]: https://docs.docker.com/engine/network/port-publishing/
+[docker-firewalls]: https://docs.docker.com/engine/network/packet-filtering-firewalls/
+[strongswan-nat-t]: https://docs.strongswan.org/docs/latest/features/natTraversal.html
 [rfc-vxlan]: https://www.rfc-editor.org/rfc/rfc7348
